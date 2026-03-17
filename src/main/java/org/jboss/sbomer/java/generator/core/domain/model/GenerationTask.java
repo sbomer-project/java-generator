@@ -1,9 +1,8 @@
 package org.jboss.sbomer.java.generator.core.domain.model;
 
-import org.jboss.sbomer.events.common.GenerationRequestSpec;
-
-import java.util.HashMap;
 import java.util.Map;
+
+import org.jboss.sbomer.events.common.GenerationRequestSpec;
 
 /**
  * Internal domain model representing a unit of work waiting in the queue.

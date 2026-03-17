@@ -1,5 +1,7 @@
 package org.jboss.sbomer.java.generator.adapter.out;
 
+import static org.jboss.sbomer.java.generator.core.ApplicationConstants.*;
+
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.sbomer.java.generator.core.domain.model.GenerationTask;
 import org.jboss.sbomer.java.generator.core.exception.GenerationValidationException;
@@ -13,8 +15,6 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
-import static org.jboss.sbomer.java.generator.core.ApplicationConstants.*;
 
 @ApplicationScoped
 @Slf4j

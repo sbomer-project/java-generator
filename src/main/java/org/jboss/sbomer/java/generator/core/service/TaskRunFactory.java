@@ -1,5 +1,7 @@
 package org.jboss.sbomer.java.generator.core.service;
 
+import static org.jboss.sbomer.java.generator.core.ApplicationConstants.*;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,8 +15,6 @@ import io.fabric8.kubernetes.api.model.EmptyDirVolumeSource;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.tekton.v1beta1.*;
 import jakarta.enterprise.context.ApplicationScoped;
-
-import static org.jboss.sbomer.java.generator.core.ApplicationConstants.*;
 
 @ApplicationScoped
 public class TaskRunFactory {

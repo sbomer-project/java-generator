@@ -52,6 +52,6 @@ class KafkaStatusNotifierTest {
 
         // Verify Context was enriched
         assertNotNull(event.getContext().getEventId());
-        assertEquals("syft-generator", event.getContext().getSource());
+        assertEquals("java-generator", event.getContext().getSource());
     }
 }

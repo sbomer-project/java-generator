@@ -2,8 +2,8 @@ package org.jboss.sbomer.java.generator.core.service;
 
 import org.jboss.sbomer.events.common.GenerationRequestSpec;
 import org.jboss.sbomer.events.common.Target;
-import org.jboss.sbomer.java.generator.core.domain.model.GenerationTask;
 import org.jboss.sbomer.java.generator.core.domain.GenerationStatus;
+import org.jboss.sbomer.java.generator.core.domain.model.GenerationTask;
 import org.jboss.sbomer.java.generator.core.port.spi.FailureNotifier;
 import org.jboss.sbomer.java.generator.core.port.spi.GenerationExecutor;
 import org.jboss.sbomer.java.generator.core.port.spi.StatusNotifier;
