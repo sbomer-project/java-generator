@@ -41,8 +41,8 @@ public class TektonGenerationExecutor implements GenerationExecutor {
             taskRun = taskRunFactory.createCdxMavenPluginTaskRun(generationTask);
         }
 
-        // Factory Logic
-        String type = generationTask.generatorOptions().getOrDefault("type", "Unknown");
+        // Factory Logic (default to CycloneDX Maven Plugin)
+        String type = generationTask.generatorOptions().getOrDefault("type", CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE);
         if (CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE.equals(type)) {
             taskRun = taskRunFactory.createCdxMavenPluginTaskRun(generationTask);
         } else if (DOMINO_GENERATOR_SUBTYPE.equals(type)) {
@@ -77,11 +77,11 @@ public class TektonGenerationExecutor implements GenerationExecutor {
     @WithSpan
     @Override
     public void cleanupGeneration(@SpanAttribute("generation.id") String generationId) {
-        log.info("Cleaning up generation: {}", generationId);
-        kubernetesClient.resources(TaskRun.class)
-                .inNamespace(namespace)
-                .withLabel(LABEL_GENERATION_ID, generationId)
-                .delete();
+         log.info("Cleaning up generation: {}", generationId);
+         kubernetesClient.resources(TaskRun.class)
+                 .inNamespace(namespace)
+                 .withLabel(LABEL_GENERATION_ID, generationId)
+                 .delete();
     }
 
     @Override

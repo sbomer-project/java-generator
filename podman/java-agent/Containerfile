@@ -1,31 +1,32 @@
-# https://catalog.redhat.com/software/containers/ubi9/618326f8c0d15aff4912fe0b
-FROM registry.access.redhat.com/ubi9@sha256:dec374e05cc13ebbc0975c9f521f3db6942d27f8ccdf06b180160490eef8bdbc
+FROM registry.access.redhat.com/ubi9/ubi:latest
 
-# TODO install Java SBOM generation related tooling: CycloneDX Maven Plugin, Domino
-
-RUN dnf -y --noplugins --setopt=install_weak_deps=0 --setopt=tsflags=nodocs upgrade
-RUN INSTALL_PKGS="jq wget unzip zip git skopeo" && \
+# 1. Install required OS packages
+# Added curl, tar, gzip for SDKMAN! (Dropped skopeo)
+RUN dnf -y --noplugins --setopt=install_weak_deps=0 --setopt=tsflags=nodocs upgrade && \
+    INSTALL_PKGS="jq wget unzip zip git glibc-langpack-en" && \
     dnf --disableplugin=subscription-manager -y --nodocs --setopt=install_weak_deps=0 install $INSTALL_PKGS && \
     dnf clean all && \
     rm -rf /var/cache/* /var/log/dnf* /var/log/yum.*
 
-RUN wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-RUN chmod a+x /usr/local/bin/yq
+# 2. Install yq
+RUN wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && \
+    chmod a+x /usr/local/bin/yq
 
+# 3. Setup Environment
 WORKDIR /workdir
+ENV HOME=/workdir \
+    SBOMER_DOMINO_DIR="/workdir/domino" \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
-ENV HOME=/workdir
-
+# 4. Set permissions for Tekton non-root user
 RUN chown -R 65532:0 /workdir && \
     chmod -R g=u /workdir
 
 USER 65532
 
-COPY --chown=65532:0 \
-    podman/syft-agent/install.sh \
-    /workdir/
+# 5. Copy and run our generic install script
+COPY --chown=65532:0 podman/java-agent/install.sh /workdir/
 
-RUN sh -c ./install.sh && rm ./install.sh
-
-# Expose Syft and Java to the default PATH
-ENV PATH="$HOME/syft:$HOME/.sdkman/candidates/java/current/bin:$PATH"
+RUN bash ./install.sh && rm ./install.sh

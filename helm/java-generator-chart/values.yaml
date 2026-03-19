@@ -81,6 +81,42 @@ task:
     tag: ""
     pullPolicy: IfNotPresent
 
+  maven:
+    configMapName: java-generator-maven-settings
+    # Inject custom <mirrors>, <profiles>, <activeProfiles> here.
+    # Do NOT include the <?xml> or <settings> root tags.
+    settingsContent: ""
+
+  gradle:
+    configMapName: java-generator-gradle-init
+    # Default upstream Gradle init script for CycloneDX.
+    # Parent charts can override this to inject internal proxy repositories.
+    initScript: |
+      initscript {
+        repositories {
+          maven {
+              url "https://plugins.gradle.org/m2/"
+          }
+        }
+        dependencies {
+          // PLUGIN_VERSION will be injected as an environment variable by the Tekton Task
+          classpath "org.cyclonedx:cyclonedx-gradle-plugin:${System.env.PLUGIN_VERSION}"
+        }
+      }
+
+      allprojects {
+        apply plugin:org.cyclonedx.gradle.CycloneDxPlugin
+        cyclonedxBom {
+          includeConfigs = ["runtimeClasspath", "compileClasspath"]
+          skipConfigs = ["testRuntimeClasspath", "testCompileClasspath"]
+          projectType = "library"
+          schemaVersion = "1.6"
+          destination = file("build/sbom")
+          outputName = "bom"
+          includeBomSerialNumber = false
+        }
+      }
+
 # This is for setting Kubernetes Annotations to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 podAnnotations: {}

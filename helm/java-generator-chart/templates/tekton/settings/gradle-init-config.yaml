@@ -1,0 +1,10 @@
+# templates/configmap-gradle-init.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.task.gradle.configMapName }}
+  labels:
+    {{- include "java-generator-chart.labels" . | nindent 4 }}
+data:
+  cyclonedx-init.gradle: |
+{{ .Values.task.gradle.initScript | indent 4 }}
