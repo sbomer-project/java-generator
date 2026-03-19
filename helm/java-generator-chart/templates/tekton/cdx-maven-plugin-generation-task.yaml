@@ -31,15 +31,6 @@ spec:
     - name: additional-args
       type: string
       default: ""
-    - name: retry-count
-      type: string
-      default: "5"
-    - name: retry-delay
-      type: string
-      default: "1"
-    - name: retry-max-delay
-      type: string
-      default: "60"
     - name: trace-parent
       type: string
       default: ""
@@ -117,6 +108,11 @@ spec:
         fi
 
         echo "Generating SBOM via Maven..."
+
+        # 1. Inject the JVM boundaries and crash behavior into Maven
+        export MAVEN_OPTS="-XX:MaxRAMPercentage=80.0 -XX:+ExitOnOutOfMemoryError"
+
+        # 2. Define the execution function
         # shellcheck disable=SC2086
         generate_bom() {
             mvn org.cyclonedx:cyclonedx-maven-plugin:"$(params.plugin-version)":makeAggregateBom \
@@ -126,8 +122,31 @@ spec:
                 -Dcyclonedx.outputDirectory="$(workspaces.data.path)" \
                 $(params.additional-args)
         }
-        # Assuming retry is defined in otel-helpers.sh like in your reference
-        retry "maven-generate" generate_bom
+
+        # 3. Temporarily disable bash strict exit so we can catch the error
+        set +e
+
+        generate_bom
+        EXIT_CODE=$?
+
+        set -e # Re-enable strict mode
+
+        # 4. Analyze the failure
+        if [ $EXIT_CODE -ne 0 ]; then
+            # Pause for 1 second to guarantee the JVM crash logs have flushed to disk
+            sleep 1
+
+            if grep -q "OutOfMemoryError" "$(workspaces.data.path)/logs/generate.log"; then
+                echo "Java Heap OOM detected! Forcing a Kubernetes OOMKill to trigger SbomService retry..."
+
+                # This awk command rapidly fills memory until Kubernetes kills the container
+                # resulting in an actual "OOMKilled" to trigger the retry mechanism
+                awk 'BEGIN{for(i=0;;i++)a[i]=i}'
+            fi
+
+            # If it failed for another reason, exit normally so Tekton marks it as Failed
+            exit $EXIT_CODE
+        fi
 
         otel_metric "sbomer.taskrun.sbom.bytes" "$(stat -c%s "$(workspaces.data.path)/bom.json")"
         otel_metric "sbomer.taskrun.sbom.components" "$(jq '.components | length' "$(workspaces.data.path)/bom.json")"

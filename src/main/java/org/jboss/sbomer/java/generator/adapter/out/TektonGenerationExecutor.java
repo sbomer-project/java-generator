@@ -41,8 +41,8 @@ public class TektonGenerationExecutor implements GenerationExecutor {
             taskRun = taskRunFactory.createCdxMavenPluginTaskRun(generationTask);
         }
 
-        // Factory Logic (default to CycloneDX Maven Plugin)
-        String type = generationTask.generatorOptions().getOrDefault("type", CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE);
+        // Factory Logic
+        String type = generationTask.generatorOptions().getOrDefault("type", "Unknown");
         if (CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE.equals(type)) {
             taskRun = taskRunFactory.createCdxMavenPluginTaskRun(generationTask);
         } else if (DOMINO_GENERATOR_SUBTYPE.equals(type)) {

@@ -22,18 +22,9 @@ spec:
     - name: java-version
       type: string
       default: "17.0.12-tem"
-    - name: domino-additional-args
+    - name: additional-args
       type: string
       default: ""
-    - name: retry-count
-      type: string
-      default: "5"
-    - name: retry-delay
-      type: string
-      default: "1"
-    - name: retry-max-delay
-      type: string
-      default: "60"
     - name: trace-parent
       type: string
       default: ""
@@ -68,6 +59,8 @@ spec:
         mkdir -p $(workspaces.data.path)/logs
         otel_tee "$(workspaces.data.path)/logs/generate.log"
 
+        # Disable strict unbound variable checking for SDKMAN
+        set +u
         echo "Initializing SDKMAN!..."
         source /workdir/.sdkman/bin/sdkman-init.sh
         if [[ "$(params.java-version)" != "17.0.12-tem" ]]; then
@@ -75,6 +68,8 @@ spec:
             sdk install java "$(params.java-version)" || true
             sdk use java "$(params.java-version)"
         fi
+        # Re-enable strict checking
+        set -u
 
         SOURCE_URL="$(params.source-url)"
         SOURCE_DIR="$(workspaces.data.path)/source-code"
@@ -105,16 +100,50 @@ spec:
         fi
 
         echo "Generating SBOM via Domino..."
+
+        # Start with the arguments passed by the orchestrator
+        DOMINO_ARGS="$(params.additional-args)"
+
+        # Auto-detect the default Quarkus config file ONLY if the orchestrator didn't provide one
+        if [ -f ".domino/manifest/quarkus-bom-config.json" ] && [[ "$DOMINO_ARGS" != *"--config-file"* ]]; then
+            echo "Auto-detected default Domino config file at .domino/manifest/quarkus-bom-config.json. Appending to args..."
+            DOMINO_ARGS="$DOMINO_ARGS --config-file=.domino/manifest/quarkus-bom-config.json"
+        fi
+
         # shellcheck disable=SC2086
         generate_bom() {
-            java -jar /workdir/domino/domino.jar report \
+            java -XX:MaxRAMPercentage=80.0 -XX:+ExitOnOutOfMemoryError -jar /workdir/domino/domino.jar report \
                 --project-dir="${SOURCE_DIR}" \
                 --output-file="$(workspaces.data.path)/bom.json" \
                 --manifest \
                 -s "$(workspaces.maven-settings.path)/settings.xml" \
-                $(params.domino-additional-args)
+                $DOMINO_ARGS
         }
-        retry "domino-generate" generate_bom
+
+        # Temporarily disable bash strict exit so we can catch the error
+        set +e
+
+        generate_bom
+        EXIT_CODE=$?
+
+        set -e # Re-enable strict mode
+
+        # Analyze the failure
+        if [ $EXIT_CODE -ne 0 ]; then
+            # Pause for 1 second to guarantee the JVM crash logs have flushed to disk
+            sleep 1
+
+            if grep -q "OutOfMemoryError" "$(workspaces.data.path)/logs/generate.log"; then
+                echo "Java Heap OOM detected! Forcing a Kubernetes OOMKill to trigger SbomService retry..."
+
+                # This awk command rapidly fills memory until Kubernetes kills the container
+                # resulting in an actual "OOMKilled" to trigger the retry mechanism
+                awk 'BEGIN{for(i=0;;i++)a[i]=i}'
+            fi
+
+            # If it failed for another reason, exit normally so Tekton marks it as Failed
+            exit $EXIT_CODE
+        fi
 
         otel_metric "sbomer.taskrun.sbom.bytes" "$(stat -c%s "$(workspaces.data.path)/bom.json")"
         otel_metric "sbomer.taskrun.sbom.components" "$(jq '.components | length' "$(workspaces.data.path)/bom.json")"

@@ -56,8 +56,11 @@ public class GeneratorService implements GenerationOrchestrator {
     double memoryMultiplier;
 
     // Default memory to start multiplying from (if not defined in original request)
-    @ConfigProperty(name = "sbomer.generator.default-memory", defaultValue = "1Gi")
-    String defaultMemory;
+    @ConfigProperty(name = "sbomer.generator.maven.default-memory", defaultValue = "1Gi")
+    String defaultMavenMemory;
+
+    @ConfigProperty(name = "sbomer.generator.domino.default-memory", defaultValue = "2Gi")
+    String defaultDominoMemory;
 
     // In-memory buffer (FOR NOW - SHOULD LATER BE PERSISTENT)
     private final Queue<GenerationTask> pendingQueue = new ConcurrentLinkedQueue<>();
@@ -66,8 +69,20 @@ public class GeneratorService implements GenerationOrchestrator {
     @Override
     public void acceptRequest(String generationId, GenerationRequestSpec request, Map<String, String> generatorOptions, Map<String, String> handlerProvidedOptions, String traceParent) {
         log.info("Accepted request for generation: {}", generationId);
-        // We don't execute immediately, we queue it to respect the throttling limit
-        pendingQueue.add(new GenerationTask(generationId, request, generatorOptions, handlerProvidedOptions, traceParent));
+
+        // Determine the tool type from the options (default to maven if not specified)
+        String toolType = "maven";
+        if (handlerProvidedOptions != null && handlerProvidedOptions.containsKey("type")) {
+            toolType = handlerProvidedOptions.get("type");
+        } else if (generatorOptions != null && generatorOptions.containsKey("type")) {
+            toolType = generatorOptions.get("type");
+        }
+
+        // Assign the correct starting memory baseline
+        String initialMemory = "domino".equalsIgnoreCase(toolType) ? defaultDominoMemory : defaultMavenMemory;
+
+        // Use the full constructor to set retryCount to 0 and inject the initialMemory
+        pendingQueue.add(new GenerationTask(generationId, request, 0, initialMemory, generatorOptions, handlerProvidedOptions, traceParent));
     }
 
     @WithSpan
@@ -77,6 +92,7 @@ public class GeneratorService implements GenerationOrchestrator {
 
         // If we hit OOM, we retry with more resources
         if (status == GenerationStatus.FAILED && "OOMKilled".equals(reason)) {
+            executor.cleanupGeneration(generationId);
             handleOomRetry(generationId);
             return; // Stop here. Method will do its own notification if needed
         }
@@ -116,7 +132,7 @@ public class GeneratorService implements GenerationOrchestrator {
             Span span = TraceUtility.childSpanBuilder(tracer,"GeneratorService.processQueue", task.traceParent(), task.generationId())
                     .setAttribute("target.image", task.spec().getTarget().getIdentifier())
                     .setAttribute("retry.count", task.retryCount())
-                    .setAttribute("memory.override", task.memoryOverride() != null ? task.memoryOverride() : defaultMemory)
+                    .setAttribute("memory.override", task.memoryOverride())
                     .startSpan();
             try (Scope ignored = span.makeCurrent()) {
                 try {
@@ -166,7 +182,7 @@ public class GeneratorService implements GenerationOrchestrator {
         }
 
         // Calculate new memory
-        String currentMemory = task.memoryOverride() != null ? task.memoryOverride() : defaultMemory;
+        String currentMemory = task.memoryOverride();
         String newMemory = calculateNewMemory(currentMemory);
 
         log.info("Retrying {} due to OOM. Attempt {}/{}. Increasing memory: {} -> {}",
