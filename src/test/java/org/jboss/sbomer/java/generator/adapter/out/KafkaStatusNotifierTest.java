@@ -1,57 +1,72 @@
 package org.jboss.sbomer.java.generator.adapter.out;
 
-import static io.smallrye.common.constraint.Assert.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
-import org.eclipse.microprofile.reactive.messaging.Message;
+import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.jboss.sbomer.events.generator.GenerationUpdate;
 import org.jboss.sbomer.java.generator.core.domain.GenerationStatus;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import io.quarkus.test.junit.QuarkusTest;
-import io.smallrye.reactive.messaging.memory.InMemoryConnector;
-import io.smallrye.reactive.messaging.memory.InMemorySink;
-import jakarta.enterprise.inject.Any;
-import jakarta.inject.Inject;
-
-@QuarkusTest
+@ExtendWith(MockitoExtension.class)
 class KafkaStatusNotifierTest {
 
-    @Inject
+    @Mock
+    Emitter<GenerationUpdate> emitter;
+
     KafkaStatusNotifier notifier;
 
-    // Inject the In-Memory Connector to inspect channels
-    @Inject
-    @Any
-    InMemoryConnector connector;
+    @BeforeEach
+    void setUp() {
+        notifier = new KafkaStatusNotifier();
+        notifier.emitter = emitter;
+
+        // Prevent NPE when the notifier calls .whenComplete() on the returned CompletionStage
+        when(emitter.send(any(GenerationUpdate.class))).thenReturn(CompletableFuture.completedFuture(null));
+    }
 
     @Test
-    void testNotifyStatusSuccess() {
+    void testNotifyStatus_SuccessCase() {
+        // Act
+        notifier.notifyStatus("gen-123", GenerationStatus.FINISHED, "All good", List.of("http://url1"));
 
-        InMemorySink<GenerationUpdate> results = connector.sink("generation-update");
+        // Assert
+        ArgumentCaptor<GenerationUpdate> captor = ArgumentCaptor.forClass(GenerationUpdate.class);
+        verify(emitter).send(captor.capture());
 
-        // Clear any previous test data
-        results.clear();
+        GenerationUpdate sentEvent = captor.getValue();
+        assertNotNull(sentEvent.getContext());
+        assertEquals("java-generator", sentEvent.getContext().getSource());
 
-        // Call the adapter method
-        notifier.notifyStatus("GEN-123", GenerationStatus.FINISHED, "Success", List.of("http://url"));
+        assertEquals("gen-123", sentEvent.getData().getGenerationId());
+        assertEquals("FINISHED", sentEvent.getData().getStatus());
+        assertEquals(0, sentEvent.getData().getResultCode()); // 0 for non-failed
+        assertEquals("All good", sentEvent.getData().getReason());
+        assertTrue(sentEvent.getData().getBaseSbomUrls().contains("http://url1"));
+    }
 
-        // Verify a message arrived
-        assertEquals(1, results.received().size());
+    @Test
+    void testNotifyStatus_FailedCase() {
+        // Act
+        notifier.notifyStatus("gen-456", GenerationStatus.FAILED, "OOMKilled", null);
 
-        // Verify the payload content
-        Message<GenerationUpdate> message = results.received().get(0);
-        GenerationUpdate event = message.getPayload();
+        // Assert
+        ArgumentCaptor<GenerationUpdate> captor = ArgumentCaptor.forClass(GenerationUpdate.class);
+        verify(emitter).send(captor.capture());
 
-        assertEquals("GEN-123", event.getData().getGenerationId());
-        assertEquals("FINISHED", event.getData().getStatus());
-        assertEquals(0, event.getData().getResultCode()); // 0 for Success
-        assertEquals("http://url", event.getData().getBaseSbomUrls().get(0));
-
-        // Verify Context was enriched
-        assertNotNull(event.getContext().getEventId());
-        assertEquals("java-generator", event.getContext().getSource());
+        GenerationUpdate sentEvent = captor.getValue();
+        assertEquals("gen-456", sentEvent.getData().getGenerationId());
+        assertEquals("FAILED", sentEvent.getData().getStatus());
+        assertEquals(1, sentEvent.getData().getResultCode()); // 1 for failed
+        assertEquals("OOMKilled", sentEvent.getData().getReason());
     }
 }

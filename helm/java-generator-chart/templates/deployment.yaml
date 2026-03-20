@@ -62,12 +62,23 @@ spec:
               value: {{ .Values.config.maxConcurrent | quote }}
             - name: SBOMER_GENERATOR_OOM_RETRIES
               value: {{ .Values.config.oomRetries | quote }}
+            - name: SBOMER_GENERATOR_MEMORY_MULTIPLIER
+              value: {{ .Values.config.memoryMultiplier | quote }}
+            - name: SBOMER_GENERATOR_MAVEN_DEFAULT_MEMORY
+              value: {{ .Values.config.defaultMemory.maven | quote }}
+            - name: SBOMER_GENERATOR_DOMINO_DEFAULT_MEMORY
+              value: {{ .Values.config.defaultMemory.domino | quote }}
+
 
             # Tekton Task Identity
             - name: SBOMER_GENERATOR_JAVA_DOMINO_TASK_NAME
               value: {{ .Values.task.name.domino | quote }}
             - name: SBOMER_GENERATOR_JAVA_CDX_MAVEN_PLUGIN_TASK_NAME
               value: {{ .Values.task.name.cdxMavenPlugin | quote }}
+            - name: SBOMER_GENERATOR_JAVA_MAVEN_SETTINGS_CONFIGMAP
+              value: {{ .Values.task.maven.configMapName | quote }}
+            - name: SBOMER_GENERATOR_JAVA_GRADLE_INIT_CONFIGMAP
+              value: {{ .Values.task.gradle.configMapName | quote }}
 
             # Storage & Kafka
             - name: SBOMER_STORAGE_URL

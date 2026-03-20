@@ -55,6 +55,12 @@ config:
   # Default internal cluster URL for storage
   storageUrl: "http://manifest-storage-service:8085"
 
+  # OOM Memory scaling configurations
+  memoryMultiplier: "1.5"
+  defaultMemory:
+    maven: "1Gi"
+    domino: "2Gi"
+
   kafka:
     bootstrapServers: "kafka:9092"
     schemaRegistryUrl: "http://schema-registry:8080/apis/registry/v2"
@@ -213,3 +219,10 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# Array for injecting custom environment variables not templated above
+# Example:
+# extraEnv:
+#   - name: HTTP_PROXY
+#     value: "http://proxy.example.com:8080"
+extraEnv: []

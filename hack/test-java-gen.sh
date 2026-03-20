@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 
-# TODO convert to test java-generator instead of Syft
-
-# Usage: ./test-syft-image-gen.sh [API_URL] [IMAGE_TO_SCAN]
+# Usage: ./test-java-gen.sh [API_URL] [REPO_URL]
 
 # Configuration
 API_URL="${1:-http://localhost:8080}"
-IMAGE="${2:-quay.io/pct-security/mequal:latest}"
+REPO_URL="${2:-https://github.com/spring-projects/spring-petclinic.git}"
 ENDPOINT="${API_URL}/api/v1/generations"
 
-echo "Target: $ENDPOINT"
-echo "Image:  $IMAGE"
+echo "Target API: $ENDPOINT"
+echo "Repository: $REPO_URL"
 
 # Construct JSON Payload
+# Note: TektonGenerationExecutor defaults to the CycloneDX Maven Plugin
+# if a specific generator type isn't provided in the options.
 PAYLOAD=$(cat <<EOF
 {
   "generationRequests": [
     {
       "target": {
-        "type": "CONTAINER_IMAGE",
-        "identifier": "${IMAGE}"
+        "type": "JAVA",
+        "identifier": "${REPO_URL}"
       }
     }
   ]
@@ -62,11 +62,11 @@ if [[ "$HTTP_STATUS" == "202" ]]; then
         sleep 2
 
         echo "--- Initial Status ---"
-        curl -s "$API_URL/api/v1/admin/requests/$ID/generations" | jq .
+        curl -s "$API_URL/api/v1/requests/$ID/generations" | jq .
 
         echo ""
         echo "Status can be tracked via the command below:"
-        echo "curl -s $API_URL/api/v1/admin/requests/$ID/generations | jq"
+        echo "curl -s $API_URL/api/v1/requests/$ID/generations | jq"
     else
         echo "Response: $HTTP_BODY"
     fi

@@ -35,15 +35,20 @@ public class TektonGenerationExecutor implements GenerationExecutor {
         log.info("Scheduling TaskRun for generation: {}", generationTask.generationId());
 
         TaskRun taskRun = null;
-        // Safety Check: Ensure options exist
-        if (generationTask.generatorOptions() == null || !generationTask.generatorOptions().containsKey("type")) {
-            log.info("'type' option not found for generation: {} , defaulting to CycloneDX Maven Plugin", generationTask.generationId());
-            taskRun = taskRunFactory.createCdxMavenPluginTaskRun(generationTask);
+
+        // Safely determine the type from either options map
+        String type = "Unknown";
+        if (generationTask.handlerProvidedOptions() != null && generationTask.handlerProvidedOptions().containsKey("type")) {
+            type = generationTask.handlerProvidedOptions().get("type");
+        } else if (generationTask.generatorOptions() != null && generationTask.generatorOptions().containsKey("type")) {
+            type = generationTask.generatorOptions().get("type");
         }
 
         // Factory Logic
-        String type = generationTask.generatorOptions().getOrDefault("type", "Unknown");
-        if (CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE.equals(type)) {
+        if (CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE.equals(type) || "Unknown".equals(type)) {
+            if ("Unknown".equals(type)) {
+                log.info("'type' option not found for generation: {} , defaulting to CycloneDX Maven Plugin", generationTask.generationId());
+            }
             taskRun = taskRunFactory.createCdxMavenPluginTaskRun(generationTask);
         } else if (DOMINO_GENERATOR_SUBTYPE.equals(type)) {
             taskRun = taskRunFactory.createDominoTaskRun(generationTask);
@@ -59,6 +64,7 @@ public class TektonGenerationExecutor implements GenerationExecutor {
                     )
             );
         }
+
         // Execute against the cluster
         kubernetesClient.resources(TaskRun.class).inNamespace(namespace).resource(taskRun).create();
     }

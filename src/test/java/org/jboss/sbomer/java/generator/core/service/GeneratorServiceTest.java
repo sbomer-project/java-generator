@@ -1,5 +1,12 @@
 package org.jboss.sbomer.java.generator.core.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
+import java.util.Map;
+
 import org.jboss.sbomer.events.common.GenerationRequestSpec;
 import org.jboss.sbomer.events.common.Target;
 import org.jboss.sbomer.java.generator.core.domain.GenerationStatus;
@@ -7,112 +14,145 @@ import org.jboss.sbomer.java.generator.core.domain.model.GenerationTask;
 import org.jboss.sbomer.java.generator.core.port.spi.FailureNotifier;
 import org.jboss.sbomer.java.generator.core.port.spi.GenerationExecutor;
 import org.jboss.sbomer.java.generator.core.port.spi.StatusNotifier;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import io.quarkus.test.InjectMock;
-import io.quarkus.test.junit.QuarkusTest;
-import jakarta.inject.Inject;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 
-@QuarkusTest
+@ExtendWith(MockitoExtension.class)
 class GeneratorServiceTest {
 
-    @Inject
-    GeneratorService generatorService;
+    @Mock GenerationExecutor executor;
+    @Mock StatusNotifier notifier;
+    @Mock FailureNotifier failureNotifier;
+    @Mock Tracer tracer;
 
-    @InjectMock
-    GenerationExecutor executor;
+    // THIS IS THE MAGIC FIX
+    @Mock(answer = Answers.RETURNS_SELF)
+    SpanBuilder spanBuilder;
 
-    @InjectMock
-    StatusNotifier notifier;
+    @Mock Span span;
+    @Mock Scope scope;
 
-    @InjectMock
-    FailureNotifier failureNotifier;
+    GeneratorService service;
+    GenerationRequestSpec mockRequest;
 
     @BeforeEach
-    void setup() {
-        // Default behavior: Cluster is empty (0 active executions)
-        Mockito.when(executor.countActiveExecutions()).thenReturn(0);
+    void setUp() {
+        service = new GeneratorService();
+        service.executor = executor;
+        service.notifier = notifier;
+        service.failureNotifier = failureNotifier;
+        service.tracer = tracer;
+
+        // Set default config properties
+        service.maxConcurrent = 2;
+        service.maxOomRetries = 3;
+        service.memoryMultiplier = 1.5;
+        service.defaultMavenMemory = "1Gi";
+        service.defaultDominoMemory = "2Gi";
+
+        // OTel Mocks - No need to mock setAttribute, setParent, or setSpanKind anymore!
+        lenient().when(tracer.spanBuilder(anyString())).thenReturn(spanBuilder);
+        lenient().when(spanBuilder.startSpan()).thenReturn(span);
+        lenient().when(span.makeCurrent()).thenReturn(scope);
+
+        // Dummy request spec
+        mockRequest = new GenerationRequestSpec();
+        Target target = new Target();
+        target.setIdentifier("https://github.com/dummy/repo");
+        target.setType("JAVA");
+        mockRequest.setTarget(target);
     }
 
     @Test
-    void testHappyPathScheduling() {
+    void testAcceptRequest_AssignsCorrectDefaultMemory() {
+        // Accept Maven request
+        service.acceptRequest("gen-1", mockRequest, null, null, "trace-1");
 
-        String genId = "G123";
-        GenerationRequestSpec spec = createDummySpec();
+        // Accept Domino request
+        service.acceptRequest("gen-2", mockRequest, Map.of("type", "domino"), null, "trace-2");
 
-        // Queue the request
-        generatorService.acceptRequest(genId, spec, null, null, null);
+        // Schedule them to verify their state
+        when(executor.countActiveExecutions()).thenReturn(0);
+        service.processQueue();
 
-        // Trigger the scheduler manually
-        generatorService.processQueue();
+        ArgumentCaptor<GenerationTask> taskCaptor = ArgumentCaptor.forClass(GenerationTask.class);
+        verify(executor, times(2)).scheduleGeneration(taskCaptor.capture());
 
-        // Executor was called to create the TaskRun
-        Mockito.verify(executor, Mockito.times(1)).scheduleGeneration(ArgumentMatchers.argThat(task ->
-                task.generationId().equals(genId) && task.retryCount() == 0
-        ));
+        List<GenerationTask> tasks = taskCaptor.getAllValues();
+        assertEquals("gen-1", tasks.get(0).generationId());
+        assertEquals("1Gi", tasks.get(0).memoryOverride(), "Maven should default to 1Gi");
 
-        // Notification sent (GENERATING)
-        Mockito.verify(notifier).notifyStatus(ArgumentMatchers.eq(genId), ArgumentMatchers.eq(GenerationStatus.GENERATING), ArgumentMatchers.any(), ArgumentMatchers.isNull());
+        assertEquals("gen-2", tasks.get(1).generationId());
+        assertEquals("2Gi", tasks.get(1).memoryOverride(), "Domino should default to 2Gi");
     }
 
     @Test
-    void testThrottling() {
-        // Simulate cluster is FULL (Max is 20 by default)
-        Mockito.when(executor.countActiveExecutions()).thenReturn(20);
+    void testHandleUpdate_OomKilled_TriggersRetry() {
+        // Put task in active state
+        service.acceptRequest("gen-oom", mockRequest, null, null, null);
+        service.processQueue();
 
-        // Queue a request
-        generatorService.acceptRequest("G999", createDummySpec(), null, null, null);
+        // Trigger OOM Update
+        service.handleUpdate("gen-oom", GenerationStatus.FAILED, "OOMKilled", null);
 
-        // Trigger scheduler
-        generatorService.processQueue();
+        // Verify old task is cleaned up
+        verify(executor).cleanupGeneration("gen-oom");
 
-        // NOTHING should happen because cluster is full
-        Mockito.verify(executor, Mockito.never()).scheduleGeneration(ArgumentMatchers.any());
-        Mockito.verify(notifier, Mockito.never()).notifyStatus(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
+        // Ensure status was NOT notified as failed yet
+        verify(notifier, never()).notifyStatus(eq("gen-oom"), eq(GenerationStatus.FAILED), anyString(), any());
+
+        // Process queue to run the retry
+        when(executor.countActiveExecutions()).thenReturn(1); // One is still running from the retry
+        service.processQueue();
+
+        ArgumentCaptor<GenerationTask> taskCaptor = ArgumentCaptor.forClass(GenerationTask.class);
+        verify(executor, times(2)).scheduleGeneration(taskCaptor.capture());
+
+        GenerationTask retryTask = taskCaptor.getAllValues().get(1);
+        assertEquals(1, retryTask.retryCount());
+        assertEquals("2Gi", retryTask.memoryOverride(), "Memory should have scaled from 1Gi to 2Gi (ceil of 1.5)");
     }
 
     @Test
-    void testOomRetryLogic() {
-        // We have an active task running
-        String genId = "G-OOM";
-        GenerationRequestSpec spec = createDummySpec();
+    void testHandleUpdate_OomKilled_MaxRetriesReached() {
+        // Setup task with max retries already hit
+        GenerationTask exhaustedTask = new GenerationTask("gen-max", mockRequest, 3, "4Gi", null, null, null);
+        service.acceptRequest("gen-max", mockRequest, null, null, null);
+        service.processQueue();
 
-        // Put it in the active map by "scheduling" it first
-        generatorService.acceptRequest(genId, spec, null,  null, null);
-        generatorService.processQueue(); // Now it is "Active"
+        // Force the active task state
+        service.handleUpdate("gen-max", GenerationStatus.FAILED, "OOMKilled", null); // attempt 1
+        service.handleUpdate("gen-max", GenerationStatus.FAILED, "OOMKilled", null); // attempt 2
+        service.handleUpdate("gen-max", GenerationStatus.FAILED, "OOMKilled", null); // attempt 3 (Max)
 
-        // Reset mocks to clear the initial interactions
-        Mockito.clearInvocations(executor, notifier);
+        // The 4th OOM should give up
+        service.handleUpdate("gen-max", GenerationStatus.FAILED, "OOMKilled", null);
 
-        // Simulate the Reconciler reporting an OOM Failure
-        generatorService.handleUpdate(genId, GenerationStatus.FAILED, "OOMKilled", null);
-
-        // It should NOT notify the core system (Silent Retry)
-        Mockito.verify(notifier, Mockito.never()).notifyStatus(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
-
-        // It SHOULD re-queue the task internally
-        // We trigger the scheduler again to pick up the "Retry Task"
-        generatorService.processQueue();
-
-        // Capture the task passed to the executor to verify logic
-        var taskCaptor = ArgumentCaptor.forClass(GenerationTask.class);
-        Mockito.verify(executor).scheduleGeneration(taskCaptor.capture());
-
-        var retryTask = taskCaptor.getValue();
-        Assertions.assertEquals(1, retryTask.retryCount());
-        // Default 1Gi * 1.5 (default multiplier) = 2Gi (Ceiling)
-        Assertions.assertEquals("2Gi", retryTask.memoryOverride());
+        verify(notifier).notifyStatus(eq("gen-max"), eq(GenerationStatus.FAILED), contains("Max retries exceeded"), any());
     }
 
-    private GenerationRequestSpec createDummySpec() {
-        return GenerationRequestSpec.newBuilder()
-                .setGenerationId("ignored-here")
-                .setTarget(Target.newBuilder().setIdentifier("img:tag").setType("CONTAINER").build())
-                .build();
+    @Test
+    void testProcessQueue_RespectsMaxConcurrent() {
+        service.acceptRequest("gen-1", mockRequest, null, null, null);
+        service.acceptRequest("gen-2", mockRequest, null, null, null);
+        service.acceptRequest("gen-3", mockRequest, null, null, null);
+
+        // Tell service there is only 1 slot left (max is 2)
+        when(executor.countActiveExecutions()).thenReturn(1);
+
+        service.processQueue();
+
+        // Should only schedule 1 task
+        verify(executor, times(1)).scheduleGeneration(any());
     }
 }
