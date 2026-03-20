@@ -18,7 +18,7 @@ PAYLOAD=$(cat <<EOF
   "generationRequests": [
     {
       "target": {
-        "type": "JAVA",
+        "type": "MAVEN",
         "identifier": "${REPO_URL}"
       }
     }

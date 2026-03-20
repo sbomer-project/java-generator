@@ -35,7 +35,6 @@ class GeneratorServiceTest {
     @Mock FailureNotifier failureNotifier;
     @Mock Tracer tracer;
 
-    // THIS IS THE MAGIC FIX
     @Mock(answer = Answers.RETURNS_SELF)
     SpanBuilder spanBuilder;
 

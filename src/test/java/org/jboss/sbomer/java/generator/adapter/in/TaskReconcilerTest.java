@@ -33,7 +33,6 @@ class TaskReconcilerTest {
     @Mock FailureNotifier failureNotifier;
     @Mock Tracer tracer;
 
-    // THIS IS THE MAGIC FIX: RETURNS_SELF handles all fluent setter methods automatically
     @Mock(answer = Answers.RETURNS_SELF)
     SpanBuilder spanBuilder;
 
