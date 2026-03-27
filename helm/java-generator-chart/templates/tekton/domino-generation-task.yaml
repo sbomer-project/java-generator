@@ -77,19 +77,31 @@ spec:
 
         echo "Resolving source from: $SOURCE_URL"
         if [[ "$SOURCE_URL" == *.zip* ]]; then
-            curl -sL "${SOURCE_URL%%#*}" -o /tmp/source.zip
-            unzip -q /tmp/source.zip -d "${SOURCE_DIR}"
+            fetch_zip() {
+                curl -sL "${SOURCE_URL%%#*}" -o /tmp/source.zip
+            }
+            otel_trace "curl-download-zip" fetch_zip
+            otel_trace "unzip-source" unzip -q /tmp/source.zip -d "${SOURCE_DIR}"
         elif [[ "$SOURCE_URL" == *.tar.gz* ]] || [[ "$SOURCE_URL" == *.tgz* ]]; then
-            curl -sL "${SOURCE_URL%%#*}" | tar -xz -C "${SOURCE_DIR}"
+            fetch_tar() {
+                curl -sL "${SOURCE_URL%%#*}" | tar -xz -C "${SOURCE_DIR}"
+            }
+            otel_trace "curl-download-tar" fetch_tar
         else
             GIT_URL="${SOURCE_URL%#*}"
             GIT_REV="${SOURCE_URL#*#}"
             [[ "$GIT_REV" == "$GIT_URL" ]] && GIT_REV="main"
 
-            git clone "${GIT_URL}" "${SOURCE_DIR}"
+            clone_repo() {
+                git clone "${GIT_URL}" "${SOURCE_DIR}"
+            }
+            otel_trace "git-clone" clone_repo
             cd "${SOURCE_DIR}"
             if [[ -n "$GIT_REV" ]]; then
-                git checkout "${GIT_REV}"
+                checkout_rev() {
+                    git checkout "${GIT_REV}"
+                }
+                otel_trace "git-checkout" checkout_rev
             fi
         fi
 
@@ -123,7 +135,7 @@ spec:
         # Temporarily disable bash strict exit so we can catch the error
         set +e
 
-        generate_bom
+        otel_trace "domino-generate" generate_bom
         EXIT_CODE=$?
 
         set -e # Re-enable strict mode
