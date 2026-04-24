@@ -13,7 +13,6 @@ import org.jboss.sbomer.java.generator.core.domain.model.GenerationTask;
 
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder;
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSource;
-import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.tekton.v1beta1.*;
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -35,7 +34,9 @@ public class TaskRunFactory {
     @ConfigProperty(name = "sbomer.generator.java.maven-settings-configmap", defaultValue = "java-generator-maven-settings")
     String mavenSettingsConfigMapName;
 
-    private static final String ANNOTATION_RETRY_COUNT = "sbomer.jboss.org/retry-count";
+    @ConfigProperty(name = "sbomer.generator.kueue.queue-name", defaultValue = "java-generator-queue")
+    String kueueQueueName;
+
     private static final String ANNOTATION_TRACEPARENT = "sbomer.jboss.org/traceparent";
 
     public TaskRun createCdxMavenPluginTaskRun(GenerationTask generationTask) {
@@ -99,26 +100,14 @@ public class TaskRunFactory {
                                 .build()
                 ));
 
-        // 5. Memory Overrides
-        if (generationTask.memoryOverride() != null) {
-            specBuilder.addToStepOverrides(new TaskRunStepOverrideBuilder()
-                    .withName("generate")
-                    .withNewResources()
-                    .withRequests(Map.of("memory", new Quantity(generationTask.memoryOverride())))
-                    .withLimits(Map.of("memory", new Quantity(generationTask.memoryOverride())))
-                    .endResources()
-                    .build());
-        }
-
-        // 6. Build Final TaskRun
-        Map<String, String> labels = Map.of(
-                LABEL_GENERATION_ID, generationId,
-                LABEL_GENERATOR_TYPE, LABEL_GENERATOR_VALUE,
-                "app.kubernetes.io/managed-by", "sbomer-java-generator"
-        );
+        // 5. Build Final TaskRun
+        Map<String, String> labels = new HashMap<>();
+        labels.put(LABEL_GENERATION_ID, generationId);
+        labels.put(LABEL_GENERATOR_TYPE, LABEL_GENERATOR_VALUE);
+        labels.put("app.kubernetes.io/managed-by", "sbomer-java-generator");
+        labels.put("kueue.x-k8s.io/queue-name", kueueQueueName);
 
         Map<String, String> annotations = new HashMap<>();
-        annotations.put(ANNOTATION_RETRY_COUNT, String.valueOf(generationTask.retryCount()));
         if (generationTask.traceParent() != null) {
             annotations.put(ANNOTATION_TRACEPARENT, generationTask.traceParent());
         }

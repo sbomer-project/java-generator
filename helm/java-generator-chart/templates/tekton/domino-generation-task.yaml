@@ -34,11 +34,11 @@ spec:
       imagePullPolicy: {{ .Values.task.agent.pullPolicy }}
       resources:
         requests:
-          cpu: 500m
-          memory: 1000Mi
+          cpu: {{ .Values.task.resources.domino.requests.cpu }}
+          memory: {{ .Values.task.resources.domino.requests.memory }}
         limits:
-          cpu: 800m
-          memory: 2000Mi
+          cpu: {{ .Values.task.resources.domino.limits.cpu }}
+          memory: {{ .Values.task.resources.domino.limits.memory }}
       env:
         - name: TRACEPARENT
           value: "$(params.trace-parent)"

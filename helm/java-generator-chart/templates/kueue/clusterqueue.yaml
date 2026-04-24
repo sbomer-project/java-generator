@@ -1,0 +1,24 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: {{ .Values.kueue.clusterQueue.name }}
+  labels:
+    {{- include "java-generator-chart.labels" . | nindent 4 }}
+spec:
+  namespaceSelector: {}  # Allow all namespaces
+  resourceGroups:
+  - coveredResources: ["cpu", "memory"]
+    flavors:
+    - name: {{ .Values.kueue.resourceFlavor.name }}
+      resources:
+      # CPU quota for all concurrent tasks
+      # Note: Kueue uses resource requests (not limits) for admission control
+      - name: "cpu"
+        nominalQuota: {{ .Values.kueue.clusterQueue.quotas.cpu | quote }}
+      # Memory quota for all concurrent tasks
+      # Note: Kueue uses resource requests (not limits) for admission control
+      - name: "memory"
+        nominalQuota: {{ .Values.kueue.clusterQueue.quotas.memory | quote }}
+  # Admission control configuration
+  queueingStrategy: {{ .Values.kueue.clusterQueue.queueingStrategy }}
+
