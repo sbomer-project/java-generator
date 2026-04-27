@@ -47,8 +47,15 @@ public class TaskReconciler implements Reconciler<TaskRun> {
         String taskName = taskRun.getMetadata().getName();
         String generationId = taskRun.getMetadata().getLabels().get(GENERATION_ID_LABEL);
 
-        // Extract status for logging
+        // Extract status for logging and tracing
         String taskRunReason = getConditionReason(taskRun);
+
+        // Add span attributes for observability
+        Span.current().setAttribute("taskrun.name", taskName != null ? taskName : "unknown");
+        Span.current().setAttribute("taskrun.reason", taskRunReason);
+        if (generationId != null) {
+            Span.current().setAttribute("generation.id", generationId);
+        }
 
         return doReconcile(taskRun, taskName, generationId, taskRunReason);
     }
