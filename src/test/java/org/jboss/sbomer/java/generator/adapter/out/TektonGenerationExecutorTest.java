@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
 import java.util.Map;
 
 import org.jboss.sbomer.events.common.GenerationRequestSpec;
@@ -27,7 +26,6 @@ import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.tekton.v1beta1.TaskRun;
 import io.fabric8.tekton.v1beta1.TaskRunBuilder;
 import io.fabric8.tekton.v1beta1.TaskRunList;
-import io.fabric8.tekton.v1beta1.TaskRunListBuilder;
 
 @ExtendWith(MockitoExtension.class)
 class TektonGenerationExecutorTest {
@@ -62,7 +60,7 @@ class TektonGenerationExecutorTest {
 
     @Test
     void testScheduleGeneration_WithDominoType() {
-        GenerationTask task = new GenerationTask("gen-1", mockRequest, 0, null, Map.of("type", DOMINO_GENERATOR_SUBTYPE), null, null);
+        GenerationTask task = new GenerationTask("gen-1", mockRequest, Map.of("type", DOMINO_GENERATOR_SUBTYPE), null, null);
         when(taskRunFactory.createDominoTaskRun(task)).thenReturn(dummyTaskRun);
 
         executor.scheduleGeneration(task);
@@ -73,7 +71,7 @@ class TektonGenerationExecutorTest {
 
     @Test
     void testScheduleGeneration_WithMavenType() {
-        GenerationTask task = new GenerationTask("gen-2", mockRequest, 0, null, null, Map.of("type", CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE), null);
+        GenerationTask task = new GenerationTask("gen-2", mockRequest, null, Map.of("type", CDX_MAVEN_PLUGIN_GENERATOR_SUBTYPE), null);
         when(taskRunFactory.createCdxMavenPluginTaskRun(task)).thenReturn(dummyTaskRun);
 
         executor.scheduleGeneration(task);
@@ -84,7 +82,7 @@ class TektonGenerationExecutorTest {
 
     @Test
     void testScheduleGeneration_DefaultsToMavenWhenEmpty() {
-        GenerationTask task = new GenerationTask("gen-3", mockRequest, 0, null, null, null, null);
+        GenerationTask task = new GenerationTask("gen-3", mockRequest, null, null, null);
         when(taskRunFactory.createCdxMavenPluginTaskRun(task)).thenReturn(dummyTaskRun);
 
         executor.scheduleGeneration(task);
@@ -95,7 +93,7 @@ class TektonGenerationExecutorTest {
 
     @Test
     void testScheduleGeneration_ThrowsOnUnknownType() {
-        GenerationTask task = new GenerationTask("gen-invalid", mockRequest, 0, null, Map.of("type", "magic-generator"), null, null);
+        GenerationTask task = new GenerationTask("gen-invalid", mockRequest, Map.of("type", "magic-generator"), null, null);
 
         GenerationValidationException ex = assertThrows(GenerationValidationException.class, () -> {
             executor.scheduleGeneration(task);
@@ -105,33 +103,4 @@ class TektonGenerationExecutorTest {
         verifyNoInteractions(taskRunFactory);
     }
 
-    @Test
-    void testCleanupGeneration_DeletesFromKubernetes() {
-        executor.cleanupGeneration("gen-cleanup");
-
-        // Verify the end of the chain was called
-        verify(labelClient).delete();
-    }
-
-    @Test
-    void testCountActiveExecutions_FiltersFinishedTasks() {
-        TaskRun runningTask = new TaskRunBuilder().withNewStatus().endStatus().build();
-        String finishedJson = """
-                {
-                  "status": {
-                    "conditions": [ { "type": "Succeeded", "status": "True" } ]
-                  }
-                }
-                """;
-        TaskRun finishedTask = io.fabric8.kubernetes.client.utils.Serialization.unmarshal(finishedJson, TaskRun.class);
-
-        var taskList = new TaskRunListBuilder().withItems(List.of(runningTask, finishedTask)).build();
-
-        // Wire the specific list call
-        when(labelClient.list()).thenReturn(taskList);
-
-        int activeCount = executor.countActiveExecutions();
-
-        assertEquals(1, activeCount);
-    }
 }

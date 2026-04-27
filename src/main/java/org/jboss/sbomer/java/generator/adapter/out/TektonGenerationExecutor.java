@@ -10,7 +10,6 @@ import org.jboss.sbomer.java.generator.core.service.TaskRunFactory;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.tekton.v1beta1.TaskRun;
-import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -66,54 +65,8 @@ public class TektonGenerationExecutor implements GenerationExecutor {
         }
 
         // Execute against the cluster
+        // Kueue manages the TaskRun lifecycle, including cleanup after completion
         kubernetesClient.resources(TaskRun.class).inNamespace(namespace).resource(taskRun).create();
     }
 
-    @WithSpan
-    @Override
-    public void abortGeneration(@SpanAttribute("generation.id") String generationId) {
-        log.info("Aborting generation: {}", generationId);
-        kubernetesClient.resources(TaskRun.class)
-                .inNamespace(namespace)
-                .withLabel(LABEL_GENERATION_ID, generationId)
-                .delete();
-    }
-
-    // In this specific implementation, basically same logic as abortGeneration
-    @WithSpan
-    @Override
-    public void cleanupGeneration(@SpanAttribute("generation.id") String generationId) {
-         log.info("Cleaning up generation: {}", generationId);
-         kubernetesClient.resources(TaskRun.class)
-                 .inNamespace(namespace)
-                 .withLabel(LABEL_GENERATION_ID, generationId)
-                 .delete();
-    }
-
-    @Override
-    public int countActiveExecutions() {
-        // Count TaskRuns for THIS generator that are NOT finished.
-        // This is the input for the Throttling logic.
-        return (int) kubernetesClient.resources(TaskRun.class).inNamespace(namespace)
-                .withLabel(LABEL_GENERATOR_TYPE, LABEL_GENERATOR_VALUE)
-                .list()
-                .getItems()
-                .stream()
-                .filter(tr -> !isFinished(tr))
-                .count();
-    }
-
-    /**
-     * Helper to check Tekton Status Conditions
-     */
-    private boolean isFinished(TaskRun taskRun) {
-        if (taskRun.getStatus() == null || taskRun.getStatus().getConditions() == null) {
-            return false; // No status means it's initializing/running
-        }
-
-        // Check for "Succeeded" condition with Status "True" or "False" (False means failed, but it is still 'finished')
-        return taskRun.getStatus().getConditions().stream()
-                .anyMatch(c -> "Succeeded".equals(c.getType()) &&
-                        ("True".equals(c.getStatus()) || "False".equals(c.getStatus())));
-    }
 }

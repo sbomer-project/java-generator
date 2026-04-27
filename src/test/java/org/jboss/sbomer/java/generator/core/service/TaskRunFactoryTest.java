@@ -35,21 +35,16 @@ class TaskRunFactoryTest {
 
     @Test
     void testCreateDominoTaskRun_Basic() {
-        GenerationTask task = new GenerationTask("gen-123456789", mockRequest, 0, "4Gi", null, null, "trace-abc");
+        GenerationTask task = new GenerationTask("gen-123456789", mockRequest, null, null, "trace-abc");
 
         TaskRun run = factory.createDominoTaskRun(task);
 
         // Assert Metadata
         assertTrue(run.getMetadata().getGenerateName().startsWith("java-domino-gen-gen-1234"));
         assertEquals("gen-123456789", run.getMetadata().getLabels().get("sbomer.jboss.org/generation-id"));
-        assertEquals("0", run.getMetadata().getAnnotations().get("sbomer.jboss.org/retry-count"));
 
         // Assert Spec Ref
         assertEquals("generator-domino", run.getSpec().getTaskRef().getName());
-
-        // Assert Memory Overrides using Fabric8's Quantity object
-        io.fabric8.kubernetes.api.model.Quantity expectedMemory = new io.fabric8.kubernetes.api.model.Quantity("4Gi");
-        assertEquals(expectedMemory, run.getSpec().getStepOverrides().get(0).getResources().getLimits().get("memory"));
 
         // Assert Params
         Map<String, String> params = extractParams(run);
@@ -62,7 +57,7 @@ class TaskRunFactoryTest {
         Map<String, String> generatorOptions = Map.of("args", "--gen-arg", "java-version", "11");
         Map<String, String> handlerOptions = Map.of("args", "--handler-arg", "git-rev", "v1.0.0");
 
-        GenerationTask task = new GenerationTask("gen-opts", mockRequest, 0, null, generatorOptions, handlerOptions, null);
+        GenerationTask task = new GenerationTask("gen-opts", mockRequest, generatorOptions, handlerOptions, null);
 
         TaskRun run = factory.createCdxMavenPluginTaskRun(task);
         Map<String, String> params = extractParams(run);
@@ -83,7 +78,7 @@ class TaskRunFactoryTest {
         target.setIdentifier("https://example.com/source.zip");
         mockRequest.setTarget(target);
 
-        GenerationTask task = new GenerationTask("gen-arc", mockRequest, 0, null, null, Map.of("git-rev", "main"), null);
+        GenerationTask task = new GenerationTask("gen-arc", mockRequest, null, Map.of("git-rev", "main"), null);
         TaskRun run = factory.createDominoTaskRun(task);
 
         Map<String, String> params = extractParams(run);

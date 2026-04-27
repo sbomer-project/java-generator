@@ -43,6 +43,10 @@ rbac:
     - apiGroups: ["tekton.dev"]
       resources: ["taskruns", "pipelineruns", "tasks"]
       verbs: ["create", "get", "list", "watch", "update", "patch", "delete", "deletecollection"]
+    # Include Kueue for queue management
+    - apiGroups: ["kueue.x-k8s.io"]
+      resources: ["localqueues", "clusterqueues", "resourceflavors", "workloads"]
+      verbs: ["get", "list", "watch"]
 
 # --- APPLICATION CONFIG ---
 config:
@@ -50,16 +54,8 @@ config:
   otel:
     protocol: grpc
     endpoint: "" # placeholder
-  maxConcurrent: 20
-  oomRetries: 3
   # Default internal cluster URL for storage
   storageUrl: "http://manifest-storage-service:8085"
-
-  # OOM Memory scaling configurations
-  memoryMultiplier: "1.5"
-  defaultMemory:
-    maven: "1Gi"
-    domino: "2Gi"
 
   kafka:
     bootstrapServers: "kafka:9092"
@@ -69,9 +65,37 @@ config:
     # Leave empty to let Quarkus auto-discover the K8s API (Standard K8s behavior)
     # The Super-Chart can override this if needed.
     kubernetesClientMasterUrl: ""
-    # Default to false (Secure). 
+    # Default to false (Secure).
     # Can override this to "true" for local dev/minikube.
     trustCerts: "false"
+
+# --- KUEUE CONFIG ---
+# Kueue is mandatory for queue management
+kueue:
+  includeKueue: true
+  # LocalQueue configuration (namespace-scoped)
+  localQueue:
+    name: "java-generator-queue"
+  
+  # ClusterQueue configuration (cluster-scoped)
+  clusterQueue:
+    name: "java-generator-cluster-queue"
+    queueingStrategy: BestEffortFIFO
+    quotas:
+      # Total CPU quota across all task types
+      # Calculated as: maxConcurrent * highest CPU request among task types
+      # Example: 20 pods * 500m (cdxMavenPlugin/domino request) = 10000m
+      cpu: "10000m"
+      # Total memory quota across all task types
+      # Calculated as: maxConcurrent * highest memory request among task types
+      # Example: 20 pods * 1000Mi = 20Gi
+      memory: "20Gi"
+      # Maximum number of concurrent TaskRuns (across all types)
+      pods: 20
+  
+  # ResourceFlavor configuration
+  resourceFlavor:
+    name: "default-flavor"
 
 # --- TEKTON TASK CONFIG ---
 task:
@@ -86,6 +110,26 @@ task:
     # If tag is empty, the template will default to .Chart.AppVersion (The Git SHA)
     tag: ""
     pullPolicy: IfNotPresent
+  # Resource limits for TaskRun steps
+  # These values control CPU and memory allocation for generation tasks
+  # Adjust based on your workload requirements and cluster capacity
+  resources:
+    # CycloneDX Maven Plugin task resources
+    cdxMavenPlugin:
+      requests:
+        cpu: 500m
+        memory: 1000Mi
+      limits:
+        cpu: 800m
+        memory: 2000Mi
+    # Domino task resources (typically needs more memory)
+    domino:
+      requests:
+        cpu: 500m
+        memory: 1000Mi
+      limits:
+        cpu: 800m
+        memory: 2000Mi
 
   maven:
     configMapName: java-generator-maven-settings
