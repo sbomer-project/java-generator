@@ -72,6 +72,7 @@ config:
 # --- KUEUE CONFIG ---
 # Kueue is mandatory for queue management
 kueue:
+  includeKueue: true
   # LocalQueue configuration (namespace-scoped)
   localQueue:
     name: "java-generator-queue"

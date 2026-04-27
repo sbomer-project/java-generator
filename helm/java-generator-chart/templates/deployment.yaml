@@ -58,8 +58,10 @@ spec:
               value: "service.name=sbomer-java-generator"
 
             # Kueue Configuration
+            {{- if .Values.kueue.includeKueue }}
             - name: SBOMER_GENERATOR_KUEUE_QUEUE_NAME
               value: {{ .Values.kueue.localQueue.name | quote }}
+            {{- end }}
 
 
             # Tekton Task Identity

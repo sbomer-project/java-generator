@@ -1,3 +1,4 @@
+{{- if .Values.kueue.includeKueue -}}
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: ClusterQueue
 metadata:
@@ -21,4 +22,4 @@ spec:
         nominalQuota: {{ .Values.kueue.clusterQueue.quotas.memory | quote }}
   # Admission control configuration
   queueingStrategy: {{ .Values.kueue.clusterQueue.queueingStrategy }}
-
+{{- end }}
