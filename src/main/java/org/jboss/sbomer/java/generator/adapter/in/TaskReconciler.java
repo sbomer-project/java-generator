@@ -8,6 +8,7 @@ import org.jboss.sbomer.java.generator.core.domain.GenerationStatus;
 import org.jboss.sbomer.java.generator.core.port.api.GenerationOrchestrator;
 import org.jboss.sbomer.java.generator.core.port.spi.FailureNotifier;
 import org.jboss.sbomer.java.generator.core.utility.FailureUtility;
+import org.jboss.sbomer.java.generator.core.utility.TraceUtility;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,7 +20,8 @@ import io.javaoperatorsdk.operator.api.reconciler.Reconciler;
 import io.javaoperatorsdk.operator.api.reconciler.UpdateControl;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,28 +38,39 @@ public class TaskReconciler implements Reconciler<TaskRun> {
     @Inject
     ObjectMapper objectMapper;
 
+    @Inject
+    Tracer tracer;
+
     private static final String REASON_OOM_KILLED = "OOMKilled";
 
     private static final String GENERATION_ID_LABEL = "sbomer.jboss.org/generation-id";
     private static final String RESULT_NAME_SBOM_URL = "sbom-url";
+    private static final String TRACEPARENT_ANNOTATION = "sbomer.jboss.org/traceparent";
 
-    @WithSpan
     @Override
     public UpdateControl<TaskRun> reconcile(TaskRun taskRun, Context<TaskRun> context) {
         String taskName = taskRun.getMetadata().getName();
         String generationId = taskRun.getMetadata().getLabels().get(GENERATION_ID_LABEL);
 
-        // Extract status for logging and tracing
+        // Read trace context from TaskRun annotations
+        Map<String, String> annotations = taskRun.getMetadata().getAnnotations();
+        String traceParent = annotations != null ? annotations.get(TRACEPARENT_ANNOTATION) : null;
+
+        // Extract status for span attributes and logging
+        String taskRunStatus = getConditionStatus(taskRun);
         String taskRunReason = getConditionReason(taskRun);
 
-        // Add span attributes for observability
-        Span.current().setAttribute("taskrun.name", taskName != null ? taskName : "unknown");
-        Span.current().setAttribute("taskrun.reason", taskRunReason);
-        if (generationId != null) {
-            Span.current().setAttribute("generation.id", generationId);
+        // Create a child span under the original trace from the Kafka consumer
+        Span span = TraceUtility.childSpanBuilder(tracer, "TaskReconciler.reconcile", traceParent, generationId)
+                .setAttribute("taskrun.name", taskName != null ? taskName : "unknown")
+                .setAttribute("taskrun.status", taskRunStatus)
+                .setAttribute("taskrun.reason", taskRunReason)
+                .startSpan();
+        try (Scope ignored = span.makeCurrent()) {
+            return doReconcile(taskRun, taskName, generationId, taskRunReason);
+        } finally {
+            span.end();
         }
-
-        return doReconcile(taskRun, taskName, generationId, taskRunReason);
     }
 
     private UpdateControl<TaskRun> doReconcile(TaskRun taskRun, String taskName, String generationId, String statusReason) {

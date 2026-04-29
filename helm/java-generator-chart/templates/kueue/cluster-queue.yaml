@@ -1,4 +1,4 @@
-{{- if .Values.kueue.includeKueue -}}
+{{- if .Values.kueue.enabled -}}
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: ClusterQueue
 metadata:
@@ -8,18 +8,15 @@ metadata:
 spec:
   namespaceSelector: {}  # Allow all namespaces
   resourceGroups:
-  - coveredResources: ["cpu", "memory"]
+  - coveredResources: ["cpu", "memory", "pods"]
     flavors:
     - name: {{ .Values.kueue.resourceFlavor.name }}
       resources:
-      # CPU quota for all concurrent tasks
       # Note: Kueue uses resource requests (not limits) for admission control
-      - name: "cpu"
-        nominalQuota: {{ .Values.kueue.clusterQueue.quotas.cpu | quote }}
-      # Memory quota for all concurrent tasks
-      # Note: Kueue uses resource requests (not limits) for admission control
-      - name: "memory"
-        nominalQuota: {{ .Values.kueue.clusterQueue.quotas.memory | quote }}
+      {{- range .Values.kueue.clusterQueue.resources }}
+      - name: {{ .name | quote }}
+        nominalQuota: {{ .nominalQuota }}
+      {{- end }}
   # Admission control configuration
   queueingStrategy: {{ .Values.kueue.clusterQueue.queueingStrategy }}
 {{- end }}
