@@ -34,10 +34,11 @@ public class TaskRunFactory {
     @ConfigProperty(name = "sbomer.generator.java.maven-settings-configmap", defaultValue = "java-generator-maven-settings")
     String mavenSettingsConfigMapName;
 
-    @ConfigProperty(name = "sbomer.generator.kueue.queue-name", defaultValue = "java-generator-queue")
+    @ConfigProperty(name = "sbomer.generator.kueue.queue-name", defaultValue = "java-generator-local-queue")
     String kueueQueueName;
 
     private static final String ANNOTATION_TRACEPARENT = "sbomer.jboss.org/traceparent";
+    private static final String ANNOTATION_KUEUE_QUEUE = "kueue.x-k8s.io/queue-name";
 
     public TaskRun createCdxMavenPluginTaskRun(GenerationTask generationTask) {
         return createBaseTaskRun(generationTask, cdxMavenPluginTaskName, "java-cdx-maven-gen-");
@@ -105,7 +106,7 @@ public class TaskRunFactory {
         labels.put(LABEL_GENERATION_ID, generationId);
         labels.put(LABEL_GENERATOR_TYPE, LABEL_GENERATOR_VALUE);
         labels.put("app.kubernetes.io/managed-by", "sbomer-java-generator");
-        labels.put("kueue.x-k8s.io/queue-name", kueueQueueName);
+        labels.put(ANNOTATION_KUEUE_QUEUE, kueueQueueName);
 
         Map<String, String> annotations = new HashMap<>();
         if (generationTask.traceParent() != null) {

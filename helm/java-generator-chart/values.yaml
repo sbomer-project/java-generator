@@ -72,30 +72,35 @@ config:
 # --- KUEUE CONFIG ---
 # Kueue is mandatory for queue management
 kueue:
-  includeKueue: true
+  enabled: true
   # LocalQueue configuration (namespace-scoped)
   localQueue:
-    name: "java-generator-queue"
+    name: java-generator-local-queue
   
   # ClusterQueue configuration (cluster-scoped)
   clusterQueue:
-    name: "java-generator-cluster-queue"
+    name: java-generator-cluster-queue
     queueingStrategy: BestEffortFIFO
-    quotas:
+    # Resource quotas for the cluster queue
+    # Kueue uses resource requests (not limits) for admission control
+    resources:
       # Total CPU quota across all task types
       # Calculated as: maxConcurrent * highest CPU request among task types
       # Example: 20 pods * 500m (cdxMavenPlugin/domino request) = 10000m
-      cpu: "10000m"
+      - name: cpu
+        nominalQuota: 10000m
       # Total memory quota across all task types
       # Calculated as: maxConcurrent * highest memory request among task types
       # Example: 20 pods * 1000Mi = 20Gi
-      memory: "20Gi"
+      - name: memory
+        nominalQuota: 20Gi
       # Maximum number of concurrent TaskRuns (across all types)
-      pods: 20
+      - name: pods
+        nominalQuota: 20
   
   # ResourceFlavor configuration
   resourceFlavor:
-    name: "default-flavor"
+    name: default-flavor
 
 # --- TEKTON TASK CONFIG ---
 task:

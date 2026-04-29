@@ -58,7 +58,7 @@ spec:
               value: "service.name=sbomer-java-generator"
 
             # Kueue Configuration
-            {{- if .Values.kueue.includeKueue }}
+            {{- if .Values.kueue.enabled }}
             - name: SBOMER_GENERATOR_KUEUE_QUEUE_NAME
               value: {{ .Values.kueue.localQueue.name | quote }}
             {{- end }}
